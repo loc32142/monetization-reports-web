@@ -12,12 +12,12 @@
     flight.classList.add('import-progress');flight.classList.remove('hidden');flight.classList.toggle('indeterminate',percent===null);flight.classList.toggle('import-complete',phase==='done');
     document.getElementById('loading-label').textContent=text;document.getElementById('loading-count').textContent=phase==='read'?'Cloud snapshot · dữ liệu AdMob':'MONETIZATION ANALYTICS';
     document.getElementById('loading-phase').textContent=phase==='read'?'LOADING CLOUD DATA':phase==='done'?'REPORT READY':'BUILDING ANALYTICS';
-    document.getElementById('loading-percent').textContent=percent===null?'···':Math.floor(percent)+'%';document.getElementById('loading-fill').style.width=(percent??30)+'%';
+    const meter=document.getElementById('loading-percent');meter.replaceChildren(document.createTextNode(percent===null?'···':String(Math.floor(percent))));if(percent!==null){const unit=document.createElement('small');unit.textContent='%';meter.append(unit);}const track=document.getElementById('loading-track');if(percent===null)track.removeAttribute('aria-valuenow');else track.setAttribute('aria-valuenow',String(percent));document.getElementById('loading-fill').style.width=(percent??30)+'%';
     document.getElementById('loading-live').textContent=phase==='done'?'COMPLETE':'PROCESSING';
-    for(let i=0;i<3;i++){const step=document.getElementById('import-step-'+i),stage=phase==='read'?0:phase==='done'?2:1;step.classList.toggle('active',i===stage);step.classList.toggle('done',i<stage||stage===2);}
+    for(let i=0;i<3;i++){const step=document.getElementById('import-step-'+i),stage=phase==='read'?0:phase==='done'?2:1;step.classList.toggle('active',i===stage);step.classList.toggle('done',i<stage||stage===2);step.querySelector('i').textContent=i<stage||stage===2?'✓':'0'+(i+1);}
   };
   cloud.decode=(bytes,manifest)=>new Promise((resolve,reject)=>{
-    const worker=new Worker(new URL('./cloud-worker.js?v=8fcbf1c7daea',document.baseURI));const deadline=setTimeout(()=>finish(Error('Xử lý dữ liệu quá lâu. Hãy thử lại.')),120000);
+    const worker=new Worker(new URL('./cloud-worker.js?v=fa962f74e0f3',document.baseURI));const deadline=setTimeout(()=>finish(Error('Xử lý dữ liệu quá lâu. Hãy thử lại.')),120000);
     function finish(error,data){clearTimeout(deadline);worker.terminate();if(error)reject(error);else{trusted.add(data);resolve(data);}}
     worker.onmessage=({data:m})=>{if(m.type==='progress')cloud.progress(m.label,m.percent);else if(m.type==='done')finish(null,m.data);else if(m.type==='error')finish(Error(m.message));};worker.onerror=()=>finish(Error('Không khởi chạy được bộ xử lý dữ liệu. Hãy tải lại trang.'));
     worker.postMessage({bytes,manifest,kind},[bytes]);
