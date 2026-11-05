@@ -31,7 +31,7 @@
     return cloud.validate(await new Response(stream).json(),manifest);
   }
   function showFresh(m){const time=new Date(m.generatedAt).toLocaleString('vi-VN');status(`${m.synthetic?'DEMO · ':''}Cập nhật: ${time} · ${m.from} → ${m.to}`);label.title='Hai report cùng sử dụng phiên bản '+m.version;}
-  function applyWeeklyBootstrap(data){const el=document.getElementById('bootstrap'),config=JSON.parse(el.textContent);config.axes=data.axes;config.rows=data.rows;for(const k of ['mapping','userLabels','appMeta'])config[k]={...(data.configuration?.[k]||{}),...(config[k]||{})};config.metadata=data.metadata;config.importRows=data.rows.length;el.textContent=JSON.stringify(config);}
+  function applyWeeklyBootstrap(data){const el=document.getElementById('bootstrap'),config=JSON.parse(el.textContent);config.axes=data.axes;config.rows=data.rows;for(const k of ['mapping','userLabels','appMeta'])config[k]={...(data.configuration?.[k]||{}),...(config[k]||{})};config.metadata=data.metadata;config.importRows=data.rows.length;cloud.bootstrapModel=config;el.textContent='';}
   async function start(){
     try{
       if(window.ReportTransport)await window.ReportTransport.ready;
@@ -42,7 +42,7 @@
       }
       await window.reportReady;
       if(typeof cloud.apply!=='function')throw Error('Report chưa khởi tạo thành công.');
-      cloud.version=manifest.version;cloud.ready=true;cloud.bundle=null;showFresh(manifest);boot.remove();document.documentElement.classList.add('cloud-ready');
+      cloud.version=manifest.version;cloud.ready=true;cloud.bundle=null;cloud.bootstrapModel=null;showFresh(manifest);boot.remove();document.documentElement.classList.add('cloud-ready');
       timer=setInterval(check,60000);
     }catch(error){status(message(error));boot.replaceChildren();const box=document.createElement('div'),p=document.createElement('p'),button=document.createElement('button');p.textContent=message(error);button.textContent='Thử lại / đăng nhập lại';button.onclick=()=>location.reload();box.append(p,button);boot.append(box);}
   }

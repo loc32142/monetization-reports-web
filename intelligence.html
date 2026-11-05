@@ -317,7 +317,7 @@ async function readFile(file,keepExtras){
 <script type="text/plain" data-cloud-script>'use strict';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const model=JSON.parse($('bootstrap').textContent);
+const model=window.ReportCloud?.bootstrapModel||JSON.parse($('bootstrap').textContent);
 // Release the duplicate JSON text after loading the embedded rows.
 $('bootstrap').textContent='';
 const D=model.axes, DATA=model.rows;
