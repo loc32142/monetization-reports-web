@@ -1388,6 +1388,7 @@ window.ReportCloud.apply=async data=>{
  await finishWeeklyImport(()=>{
   for(let i=0;i<6;i++)D[i]=data.axes[i];
   DATA.length=0;for(const row of data.rows)DATA.push(row);
+  for(const k of ['mapping','userLabels','appMeta'])model[k]={...(data.configuration?.[k]||{}),...(model[k]||{})};
   model.metadata=data.metadata;model.importRows=DATA.length;
   for(const key of D[1]){if(!model.mapping[key])model.mapping[key]=/finance|budget|money|loan|emi|calculator/i.test(key)?'Finance':/prank|funny|joke|fart|horn/i.test(key)?'Prank':'AI';}
   rebuildDateIndex();WEEKLY_QUERY_CACHE.clear();CHART_CACHE.clear();CHART_CONTEXT.clear();

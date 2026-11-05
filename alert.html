@@ -1410,6 +1410,7 @@ window.ReportCloud.apply=async data=>{
  const oldLast=state.dataLast,span=state.range.from&&state.range.to?daysBetween(state.range.from,state.range.to):14,follow=state.range.to===oldLast;
  const rows=window.ReportCloud.toAlert(data);
  await finishAlertImport(()=>{
+  state.categories={...(data.configuration?.mapping||{}),...state.categories};state.aliases={...(data.configuration?.userLabels||{}),...state.aliases};
   releaseInspectLiquid(true);finishSlicerMotion();state.rows=rows;state.snapshotNote='AdMob API · đồng bộ cloud';state.sourceFiles=3;
   state.selected=null;state.unit=null;state.chartModels={};state.hidden={};createAppIndex();syncWatchlist();
   if(follow)state.range={from:addDay(state.dataLast,-Math.max(6,span)+1),to:state.dataLast};

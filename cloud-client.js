@@ -31,12 +31,12 @@
     return cloud.validate(await new Response(stream).json(),manifest);
   }
   function showFresh(m){const time=new Date(m.generatedAt).toLocaleString('vi-VN');status(`${m.synthetic?'DEMO · ':''}Cập nhật: ${time} · ${m.from} → ${m.to}`);label.title='Hai report cùng sử dụng phiên bản '+m.version;}
-  function applyWeeklyBootstrap(data){const el=document.getElementById('bootstrap'),config=JSON.parse(el.textContent);config.axes=data.axes;config.rows=data.rows;config.metadata=data.metadata;config.importRows=data.rows.length;el.textContent=JSON.stringify(config);}
+  function applyWeeklyBootstrap(data){const el=document.getElementById('bootstrap'),config=JSON.parse(el.textContent);config.axes=data.axes;config.rows=data.rows;for(const k of ['mapping','userLabels','appMeta'])config[k]={...(data.configuration?.[k]||{}),...(config[k]||{})};config.metadata=data.metadata;config.importRows=data.rows.length;el.textContent=JSON.stringify(config);}
   async function start(){
     try{
       if(window.ReportTransport)await window.ReportTransport.ready;
       const manifest=await json('/api/latest');const data=await download(manifest);cloud.bundle=data;
-      if(kind==='weekly')applyWeeklyBootstrap(data);
+      if(kind==='weekly')applyWeeklyBootstrap(data);else{const el=document.getElementById('seed-config'),config=JSON.parse(el.textContent);config.categories={...(data.configuration?.mapping||{}),...(config.categories||{})};config.aliases={...(data.configuration?.userLabels||{}),...(config.aliases||{})};el.textContent=JSON.stringify(config);}
       for(const source of document.querySelectorAll('script[data-cloud-script]')){
         const script=document.createElement('script');script.textContent=source.textContent;document.body.append(script);source.remove();
       }
