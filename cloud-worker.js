@@ -5,7 +5,8 @@ self.onmessage=async({data:{bytes,manifest,kind}})=>{
   progress('Đang giải nén dữ liệu…',null);
   const data=await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).json();
   if(data.mediationGroupRows!==undefined&&(!Array.isArray(data.mediationGroups)||!Array.isArray(data.mediationGroupRows)||data.mediationGroupRows.length!==data.rows?.length||data.mediationGroups.some(g=>!g||typeof g.id!=='string'||typeof g.name!=='string')||data.mediationGroupRows.some(i=>i!==null&&(!Number.isInteger(i)||i<0||i>=data.mediationGroups.length))))throw Error('Sai dữ liệu mediation group.');
-  if(data?.schema!==1||!Array.isArray(data.axes)||data.axes.length!==6||data.axes.some(x=>!Array.isArray(x))||!Array.isArray(data.rows)||data.rows.length!==manifest.rows||!data.rows.length)throw Error('Snapshot không hợp lệ.');
+  if(data.overallRows!==undefined&&(!Array.isArray(data.overallRows)||data.overallRows.some(r=>!Array.isArray(r)||r.length!==12||r.slice(0,5).some((v,i)=>!Number.isInteger(v)||v<0||v>=data.axes?.[i]?.length)||r.slice(6,11).some(v=>!Number.isFinite(v)||v<0))))throw Error('Sai summary Match rate tổng.');
+    if(data?.schema!==1||!Array.isArray(data.axes)||data.axes.length!==6||data.axes.some(x=>!Array.isArray(x))||!Array.isArray(data.rows)||data.rows.length!==manifest.rows||!data.rows.length)throw Error('Snapshot không hợp lệ.');
   const raw=kind==='alert'?new Array(data.rows.length):null;
   const apps=raw?data.axes[1].map(key=>{const m=key.match(/^(.*) ⟦([^⟧]+)⟧$/);return m?[m[1],m[2]]:[key,'Unknown'];}):null;
   for(let n=0;n<data.rows.length;n++){

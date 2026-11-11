@@ -406,16 +406,17 @@ function fmtDate(d){if(!d)return '';const p=d.split('-');return p[2]+'/'+p[1]+'/
 function num(n,d=0){if(!Number.isFinite(n))return '—';return n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
 function money(n,d=0){return '$'+num(n,d)}
 function compact(n){if(!Number.isFinite(n))return '—';if(Math.abs(n)>=1e6)return num(n/1e6,2)+'M';if(Math.abs(n)>=1e3)return num(n/1e3,1)+'K';return num(n,0)}
-function sourceRateContext(){return activePage==='source'||(model.pageFacets?.[activePage]?.source||[]).length>0||(activePage==='custom'&&(model.customBreakdown?.mr==='source'||(model.customFilters?.source||[]).length>0));}
+let chartSourceRateOverride=null;
+function sourceRateContext(){if(chartSourceRateOverride!==null)return chartSourceRateOverride;return activePage==='source'||(model.pageFacets?.[activePage]?.source||[]).length>0||(activePage==='custom'&&(model.customBreakdown?.mr==='source'||(model.customFilters?.source||[]).length>0));}
 // With Ad source breakdown the overall number of unique ad requests is not present.
 // We therefore compute AdMob Network's own source Match rate at aggregate levels.
 // The source drill-down still shows each source's own request-weighted Match rate.
 function metricsForRow(r){const isNetwork=(D[5][r[5]]||'')==='AdMob Network';
- const result=[r[6],r[7],r[8],r[9],r[10],isNetwork?r[8]:0,isNetwork?r[9]:0];
+ const result=[r[6],r[7],r[8],r[9],r[10],0,0];
  const extra=r[11]?.__extra||{};
  for(const d of (model.extraMetricDefs||[])){const v=extra[d.id];if(d.mode==='weighted'){result.push(typeof v==='object'?(Number(v.n)||0):0,typeof v==='object'?(Number(v.w)||0):0);}else result.push(Number(v)||0);}
  return result;}
-function displayedMetricName(id,label){return id==='mr'&&!sourceRateContext()?'AdMob Network match rate':label}
+function displayedMetricName(id,label){return label}
 
 function val(m,s){if(!s)return null;const [e,im,r,ma,c,uniqueRequests,uniqueMatched]=s;
  switch(m){case'ecpm':return im>0?e/im*1000:null;case'earn':return e;case'imp':return im;
@@ -472,7 +473,18 @@ function baseDimension(b,page,customKey){
  if(page==='custom')return customKey==='total'?'Total':({app:b[1],country:b[2],format:b[3],unit:b[4],platform:model.appMeta?.[b[1]]?.platform||'Unknown'})[customKey];
  return null;
 }
-function overlayMatch(){/* Source-level report only: no unique-request totals to overlay. */}
+function overlayMatch(target,period,page,customKey,scopeOverride,dimensionOverride){
+ if(page==='source'||(model.pageFacets?.[page]?.source||[]).length||(page==='custom'&&(customKey==='source'||(model.customFilters?.source||[]).length)))return;
+ const scope=scopeOverride||(page==='custom'?compileCustomScope():compilePageScope(page));
+ for(const row of (model.overallRows||[])){
+  const date=D[0][row[0]];if(date<period.from||date>period.to||!scope(row))continue;
+  const key=dimensionOverride?dimensionOverride(row):page==='custom'?(customKey==='total'?'Total':getFacet(row,customKey)):getDimension(row,page);
+  if(!key)continue;let group=target.get(key);if(!group){group=newGroup();target.set(key,group);}
+  if(Array.isArray(group)){group[5]+=row[8];group[6]+=row[9];continue;}
+  let day=group.byDate.get(date);if(!day){day=zeros();group.byDate.set(date,day);}
+  group.tot[5]+=row[8];group.tot[6]+=row[9];day[5]+=row[8];day[6]+=row[9];
+ }
+}
 // Small LRU: presentation changes reuse totals; data/filter changes get a new key.
 const WEEKLY_QUERY_CACHE=new Map();
 function weeklyQueryKey(page){return JSON.stringify([DATE_INDEX_VERSION,page,currentDates,priorDates(),compareEnabled||showPrevious,ctx,model.mapping,model.pageCountries?.[page],model.pageFacets?.[page],model.extraMetricDefs]);}
@@ -498,7 +510,7 @@ function compilePageDimension(page){
 // Core imports need no temporary metric array for every row.
 function addRowMetrics(target,row,networkId){
  for(let i=0;i<5;i++)target[i]+=(row[i+6]||0);
- if(row[5]===networkId){target[5]+=(row[8]||0);target[6]+=(row[9]||0);}
+
 }
 function buildWeeklyAggregation(page){const cur=new Map(),prev=new Map(),p=priorDates();const usePrev=compareEnabled||showPrevious,scope=compilePageScope(page),dimension=compilePageDimension(page),networkId=D[5].indexOf('AdMob Network'),hasExtras=(model.extraMetricDefs||[]).length>0;
  forTwoPeriods(currentDates,usePrev?p:null,(r,ds,side)=>{if(!scope(r))return;
@@ -743,7 +755,7 @@ function renderWeeklyContent(){leaveChartHover();CHART_CACHE.clear();syncCustomQ
  let bars=`<div class="sectionbar"><h2>Current-period comparison</h2><span class="detail">Ranked by Estimated earnings · No previous-period overlay</span></div><div class="compare-grid">${barChart('ecpm','eCPM',x,picked)}${barChart('earn','Estimated earnings',x,picked)}</div>`;
  let extras=model.chartExtras[activePage]||[];
  let extraBlock=`<div class="sectionbar"><h2>Additional metrics</h2><button class="mini-btn" id="add-chart">+ Add chart</button></div><div class="graph-grid" id="weekly-extra-charts">${extras.map(m=>lineChart(m,metricLabel(m),x,picked,true)).join('')}${extras.length?'':'<div class="addcard"><button id="add-chart-empty">+ Add comparison chart</button></div>'}</div>`;
- let ranking=`<div class="sectionbar"><h2>${topTitle} · Performance table</h2><span class="detail">Current half + Δ% vs previous half · Match rate uses AdMob Network only · scroll horizontally for all metrics</span></div>${rankingTable(x,picked)}`;
+ let ranking=`<div class="sectionbar"><h2>${topTitle} · Performance table</h2><span class="detail">Current half + Δ% vs previous half · Match rate uses source-free requests; source views use source requests · scroll horizontally for all metrics</span></div>${rankingTable(x,picked)}`;
  $page.innerHTML=`${warning}${control}${activePage==='portfolio'?'':metrics}${charts}${bars}${extras.length||true?extraBlock:''}${ranking}`;
  setupDropdown(x.order,picked,x.cur); bindCountryDropdown();bindPageActions();}
 function renderContext(){let chunks=[];
@@ -769,9 +781,52 @@ function pickKpiMetrics(){const page=activePage,chosen=new Set(metricChoices(pag
 function getDays(start,end){let n=spanDays(start,end);if(n<1||n>366)return [];return Array.from({length:n},(_,i)=>addDay(start,i))}
 function chartId(id){return activePage+'-'+id}
 function visibilityKey(id){return chartId(id)+(activePage==='custom'?'|'+(model.customBreakdown?.[id]||'total'):'')}
-function lineChart(id,title,x,picked,extra=false){
- const cid=chartId(id),visibilityId=visibilityKey(id),hidden=new Set(model.chartVisibility[visibilityId]||[]);
- CHART_CONTEXT.set(cid,{id,title,x,picked,extra});
+function editedChartAggregation(group){
+ const page=activePage;
+ return weeklyCached('edited:'+group+':'+weeklyQueryKey(page)+JSON.stringify(model.customFilters),()=>{
+  const cur=new Map(),prev=new Map(),scope=page==='custom'?compileCustomScope():compilePageScope(page);
+  const dimension=group==='default'?compilePageDimension(page):group==='total'?()=> 'Total':r=>getFacet(r,group);
+  const previous=priorDates(),usePrev=compareEnabled||showPrevious;
+  forTwoPeriods(currentDates,usePrev?previous:null,(row,date,side)=>{
+   if(!scope(row))return;const key=dimension(row);if(!key)return;
+   const dest=side===0?cur:prev;let g=dest.get(key);if(!g){g=newGroup();dest.set(key,g);}
+   let daily=g.byDate.get(date);if(!daily){daily=zeros();g.byDate.set(date,daily);}
+   const values=metricsForRow(row);sum(g.tot,values);sum(daily,values);
+  });
+  if(group!=='source'){
+   overlayMatch(cur,currentDates,page,group,scope,dimension);
+   if(usePrev)overlayMatch(prev,previous,page,group,scope,dimension);
+  }
+  return {cur,prev,order:[...cur.keys()].sort((a,b)=>(cur.get(b).tot[0]||0)-(cur.get(a).tot[0]||0))};
+ });
+}
+function lineChart(slot,title,x,picked,extra=false){
+ const edit=model.chartEdits?.[activePage]?.[slot],metric=edit?.metric||slot;
+ const group=edit?.breakdown||(activePage==='custom'?model.customBreakdown?.[slot]||'total':'default');
+ if(edit?.breakdown){x=editedChartAggregation(group);picked=x.order.slice(0,group==='total'?1:5);}
+ const prior=chartSourceRateOverride;
+ chartSourceRateOverride=activePage==='source'||group==='source'||(model.pageFacets?.[activePage]?.source||[]).length>0||(activePage==='custom'&&(model.customFilters?.source||[]).length>0);
+ try{
+  let result=lineChartCore(metric,edit?metricLabel(metric):title,x,picked,extra,slot);
+  if(edit?.second){result='<div class="multi-metric-chart" style="display:grid;gap:10px;min-width:0">'+result+lineChartCore(edit.second,metricLabel(edit.second),x,picked,false,slot+'--secondary',false)+'</div>';}
+  return result;
+ }finally{chartSourceRateOverride=prior;}
+}
+function editWeeklyChart(slot){
+ const current=model.chartEdits?.[activePage]?.[slot]||{},page=activePage;
+ const catalog=metricCatalog(),defaultGroup=page==='custom'?(model.customBreakdown?.[slot]||'total'):'default';
+ const metricOptions=chosen=>catalog.map(([id,label])=>'<option value="'+esc(id)+'" '+(id===chosen?'selected':'')+'>'+esc(label)+'</option>').join('');
+ const groups=[...(page==='custom'?[]:[['default','Current page breakdown']]),['total','None / Total'],...FACETS.filter(([key])=>['app','country','format','unit','source','platform'].includes(key))];
+ showModal('Edit chart',`<label>Choose a metric<select id="edit-chart-metric" style="display:block;width:100%;margin:8px 0 18px">${metricOptions(current.metric||slot)}</select></label><label>Dimension breakdown<select id="edit-chart-breakdown" style="display:block;width:100%;margin:8px 0 18px">${groups.map(([id,label])=>'<option value="'+id+'" '+((current.breakdown||defaultGroup)===id?'selected':'')+'>'+esc(label)+'</option>').join('')}</select></label><label><input type="checkbox" id="edit-chart-two" ${current.second?'checked':''}> Add another metric</label><div id="edit-chart-second-wrap" ${current.second?'':'hidden'}><select id="edit-chart-second" style="width:100%;margin-top:10px">${metricOptions(current.second||'earn')}</select><p class="modal-lead">Each metric has its own plot and scale. The date cursor stays linked.</p></div><div class="modal-actions"><button class="mini-btn" id="edit-chart-reset">Reset chart</button><button class="mini-btn" id="edit-chart-cancel">Cancel</button><button class="primarybtn" id="edit-chart-save">Update</button></div>`);
+ $('edit-chart-two').onchange=()=>{$('edit-chart-second-wrap').hidden=!$('edit-chart-two').checked;};
+ $('edit-chart-cancel').onclick=hideModal;
+ $('edit-chart-reset').onclick=()=>{if(model.chartEdits?.[page])delete model.chartEdits[page][slot];hideModal();render();};
+ $('edit-chart-save').onclick=()=>{const metric=$('edit-chart-metric').value,second=$('edit-chart-two').checked?$('edit-chart-second').value:null;if(second===metric){alert('Choose two different metrics.');return;}model.chartEdits||={};model.chartEdits[page]||={};model.chartEdits[page][slot]={metric,breakdown:$('edit-chart-breakdown').value,second};hideModal();render();};
+}
+document.addEventListener('click',event=>{const button=event.target.closest('[data-edit-chart]');if(button)editWeeklyChart(button.dataset.editChart);});
+function lineChartCore(id,title,x,picked,extra=false,slot=id,editable=true){
+ const cid=chartId(slot),visibilityId=visibilityKey(slot),hidden=new Set(model.chartVisibility[visibilityId]||[]);
+ CHART_CONTEXT.set(cid,{id:slot,title,x,picked,extra});
  const days=getDays(currentDates.from,currentDates.to),prior=getDays(priorDates().from,priorDates().to),series=[];
  const yValues=[];
  picked.forEach((name,i)=>{
@@ -780,8 +835,9 @@ function lineChart(id,title,x,picked,extra=false){
   series.push({name:labelFor(name),raw:name,color:COLORS[i%COLORS.length],ys,py,visible:!hidden.has(name)});
   if(!hidden.has(name)){ys.forEach(v=>{if(v!=null)yValues.push(v)});if(py)py.forEach(v=>{if(v!=null)yValues.push(v)});}
  });
- const close=extra?`<button class="extra-remove" data-remove-chart="${id}" title="Remove chart">×</button>`:`<span class="chartunit">${esc(metricUnit(id))}</span>`;
- if(!yValues.length && !series.length)return `<div class="chartcard"><div class="chart-head"><div><div class="chart-title">${esc(title)}</div><div class="chart-caption">Daily · ${days.length} days</div></div>${close}</div><div class="none">No data for selection</div></div>`;
+ const edit=editable?`<button type="button" class="mini-btn" data-edit-chart="${esc(slot)}" title="Edit chart" aria-label="Edit chart">✎</button>`:'';
+ const close=extra?`<button class="extra-remove" data-remove-chart="${slot}" title="Remove chart">×</button>`:`<span class="chartunit">${esc(metricUnit(id))}</span>`;
+ if(!yValues.length && !series.length)return `<div class="chartcard"><div class="chart-head"><div><div class="chart-title">${esc(title)}</div><div class="chart-caption">Daily · ${days.length} days</div></div>${edit}${close}</div><div class="none">No data for selection</div></div>`;
  // Honest zero-based Y axis: NEVER truncate the axis to local minimum.
  const lo=0,high=Math.max(0,...yValues),hi=high===0?1:high*1.12;
  const x1=52,x2=648,y1=15,y2=168,n=Math.max(2,days.length);
@@ -801,10 +857,10 @@ function lineChart(id,title,x,picked,extra=false){
   if(s.py)strokes+=`<g stroke="${s.color}" stroke-width="1.05" stroke-dasharray="5 4" opacity=".45" stroke-linejoin="round">${path(s.py)}</g>`;
   strokes+=`<g class="current-line" stroke="${s.color}" stroke-width="1.35" stroke-linejoin="round" stroke-linecap="round">${path(s.ys)}</g></g>`;
  }
- const chartNote=id==='mr'&&!sourceRateContext()?'<div class="mr-chart-note">AdMob Network only · Matched requests / Requests. Not overall mediation Match rate (unique ad requests unavailable in this export).</div>':'';
- const legend=series.map(s=>`<button type="button" class="legend-toggle ${s.visible?'':'is-hidden'}" data-legend-toggle="${esc(s.raw)}" data-legend-metric="${esc(id)}" aria-pressed="${s.visible?'true':'false'}" aria-label="${s.visible?'Hide':'Show'} ${esc(s.name)} on ${esc(title)}"><span class="legend-dot" style="background:${s.color}"></span><span class="legend-label">${esc(s.name)}</span></button>`).join('')+(showPrevious&&compareEnabled?'<span class="legend-item" style="font-style:italic">Dashed = previous period</span>':'');
+ const chartNote=id==='mr'&&!sourceRateContext()?'<div class="mr-chart-note">Overall Match rate · source-free matched requests / requests. If the snapshot has no source-free summary, values are unavailable.</div>':'';
+ const legend=series.map(s=>`<button type="button" class="legend-toggle ${s.visible?'':'is-hidden'}" data-legend-toggle="${esc(s.raw)}" data-legend-metric="${esc(slot)}" aria-pressed="${s.visible?'true':'false'}" aria-label="${s.visible?'Hide':'Show'} ${esc(s.name)} on ${esc(title)}"><span class="legend-dot" style="background:${s.color}"></span><span class="legend-label">${esc(s.name)}</span></button>`).join('')+(showPrevious&&compareEnabled?'<span class="legend-item" style="font-style:italic">Dashed = previous period</span>':'');
  CHART_CACHE.set(cid,{days,prior,series,id,x1,x2,y1,y2,lo,hi});
- return `<div class="chartcard interactive-chart" data-chart-container="${esc(cid)}"><div class="chart-head"><div><div class="chart-title">${esc(displayedMetricName(id,title))}</div><div class="chart-caption">Daily trend · ${days.length} days · Y-axis starts at 0</div></div>${close}</div><svg class="plot interactive-plot" data-chart-id="${esc(cid)}" viewBox="0 0 665 203" role="img" aria-label="${esc(title)} daily trend"><g>${grid}${strokes}</g><line class="crosshair" x1="52" x2="52" y1="15" y2="168"/><g class="hover-dots"></g><g class="line-extrema"></g><rect class="hover-target" x="52" y="15" width="596" height="153" fill="transparent" pointer-events="all"/></svg><div class="hover-tooltip" role="status" aria-live="off"></div>${chartNote}<div class="legend">${legend}</div></div>`;
+ return `<div class="chartcard interactive-chart" data-chart-container="${esc(cid)}"><div class="chart-head"><div><div class="chart-title">${esc(displayedMetricName(id,title))}</div><div class="chart-caption">Daily trend · ${days.length} days · Y-axis starts at 0</div></div>${edit}${close}</div><svg class="plot interactive-plot" data-chart-id="${esc(cid)}" viewBox="0 0 665 203" role="img" aria-label="${esc(title)} daily trend"><g>${grid}${strokes}</g><line class="crosshair" x1="52" x2="52" y1="15" y2="168"/><g class="hover-dots"></g><g class="line-extrema"></g><rect class="hover-target" x="52" y="15" width="596" height="153" fill="transparent" pointer-events="all"/></svg><div class="hover-tooltip" role="status" aria-live="off"></div>${chartNote}<div class="legend">${editable?legend:legend.replace(/data-legend-toggle="[^"]*"/g,'')}</div></div>`;
 }
 let weeklyLineHoverFrame=0,weeklyLineHoverPending=null,weeklyLineHoverKey=null;
 function paintWeeklyLineHover(date,raw){
@@ -847,8 +903,8 @@ function leaveChartHover(){if(weeklyLineHoverFrame)cancelAnimationFrame(weeklyLi
 function barChart(metric,title,x,picked){let items=x.order.filter(s=>picked.includes(s)).slice(0,10);if(!items.length)return `<div class="barcard"><div class="chart-title">${esc(title)}</div><div class="none">No data</div></div>`;let max=Math.max(1,...items.map(k=>val(metric,x.cur.get(k)?.tot)||0));let body=items.map((k,i)=>{let v=val(metric,x.cur.get(k)?.tot)||0;return `<div class="barrow"><div class="barname" title="${esc(labelFor(k))}">${esc(labelFor(k))}</div><div class="bartrack"><div class="barfill" style="width:${Math.max(0,Math.min(100,100*v/max))}%;background:${COLORS[picked.indexOf(k)%COLORS.length]}"></div></div><div class="barvalue">${formatVal(metric,v,true)}</div></div>`}).join('');return `<div class="barcard"><div class="barhead"><div class="chart-title">${esc(title)} · Current period</div><span class="chartunit">${items.length} ${dimOf(activePage)}</span></div>${body}</div>`}
 function splitDates(){const days=spanDays(currentDates.from,currentDates.to),n=Math.floor(days/2);return {old:{from:addDay(currentDates.to,-2*n+1),to:addDay(currentDates.to,-n)},newer:{from:addDay(currentDates.to,-n+1),to:currentDates.to},excluded:days-2*n,n};}
 function splitGroup(page,range,restrict){
- if(restrict){let output=new Map();const scope=compilePageScope(page);forDateRange(range,r=>{if(!scope(r))return;const k=getDimension(r,page);if(!restrict(r,k))return;if(!output.has(k))output.set(k,zeros());sum(output.get(k),metricsForRow(r));});overlayMatch(output,range,page);return output;}
- return weeklyCached('split:'+weeklyQueryKey(page)+JSON.stringify(range),()=>{const output=new Map();for(const [key,group] of agg(page).cur){for(const [date,values] of group.byDate){if(date<range.from||date>range.to)continue;if(!output.has(key))output.set(key,zeros());sum(output.get(key),values);}}overlayMatch(output,range,page);return output;});
+ if(restrict){let output=new Map();const scope=compilePageScope(page);forDateRange(range,r=>{if(!scope(r))return;const k=getDimension(r,page);if(!restrict(r,k))return;if(!output.has(k))output.set(k,zeros());sum(output.get(k),metricsForRow(r));});overlayMatch(output,range,page,null,r=>scope(r)&&restrict(r,getDimension(r,page)));return output;}
+ return weeklyCached('split:'+weeklyQueryKey(page)+JSON.stringify(range),()=>{const output=new Map();for(const [key,group] of agg(page).cur){for(const [date,values] of group.byDate){if(date<range.from||date>range.to)continue;if(!output.has(key))output.set(key,zeros());sum(output.get(key),values);}}return output;});
 }
 function formatDelta(metric,now,prev,kind){if(now==null||prev==null)return '—';let diff=now-prev;if(kind==='pct'){if(prev===0)return now===0?'0.0%':'N/A';let pct=diff/Math.abs(prev)*100;return (pct>0?'+':'')+num(pct,1)+'%';}let prefix=diff>0?'+':diff<0?'−':'';let abs=Math.abs(diff);if(metricUnit(metric)==='USD')return prefix+money(abs,2);if(metricUnit(metric)==='%'||['mr','sr','ctr'].includes(metric))return prefix+num(abs,2)+' pp';return prefix+num(abs);}
 function rowCells(metric,newer,older,edge){
@@ -880,7 +936,7 @@ function splitSub(main,range,dimension){
  const groups=weeklyCached(key,()=>{const out=new Map(),scope=compilePageScope(page),label=compilePageDimension(page),networkId=D[5].indexOf('AdMob Network'),hasExtras=(model.extraMetricDefs||[]).length>0;
   forDateRange(currentDates,(r,date)=>{if(!scope(r)||label(r)!==main)return;const name=D[dimension][r[dimension]];let dates=out.get(name);if(!dates){dates=new Map();out.set(name,dates);}let values=dates.get(date);if(!values){values=zeros();dates.set(date,values);}if(hasExtras)sum(values,metricsForRow(r));else addRowMetrics(values,r,networkId);});return out;
  });
- return weeklyCached(key+JSON.stringify(range),()=>{const out=new Map();for(const [name,dates] of groups){for(const [date,values] of dates){if(date<range.from||date>range.to)continue;if(!out.has(name))out.set(name,zeros());sum(out.get(name),values);}}overlayMatch(out,range,page,null,main,dimension);return out;});
+ return weeklyCached(key+JSON.stringify(range),()=>{const out=new Map();for(const [name,dates] of groups){for(const [date,values] of dates){if(date<range.from||date>range.to)continue;if(!out.has(name))out.set(name,zeros());sum(out.get(name),values);}}const subScope=compilePageScope(page);overlayMatch(out,range,page,null,r=>subScope(r)&&getDimension(r,page)===main,r=>D[dimension][r[dimension]]);return out;});
 }
 function availableCountries(page){return weeklyCached('countries:'+JSON.stringify([DATE_INDEX_VERSION,currentDates,page,model.mapping]),()=>{const amounts=new Map(),categories=D[1].map(app=>model.mapping[app]||'AI'),categoryPage=CATS.includes(page);forDateRange(currentDates,r=>{if(categoryPage&&categories[r[1]]!==page)return;const k=D[2][r[2]];amounts.set(k,(amounts.get(k)||0)+r[6]);});return [...amounts].sort((a,b)=>b[1]-a[1]);});}
 function bindCountryDropdown(){
@@ -946,7 +1002,7 @@ function prepareCustomAggregations(){
    if(hasExtras){sum(record.tot,values);sum(daily,values);}else{addRowMetrics(record.tot,r,networkId);addRowMetrics(daily,r,networkId);}
   }
  });
- for(const group of groups){const result=maps.get(group);result.order=[...result.cur.keys()].sort((a,b)=>result.cur.get(b).tot[0]-result.cur.get(a).tot[0]);CUSTOM_AGG_CACHE.set(group,result);}
+ for(const group of groups){const result=maps.get(group);overlayMatch(result.cur,currentDates,'custom',group);if(usePrev)overlayMatch(result.prev,previous,'custom',group);result.order=[...result.cur.keys()].sort((a,b)=>result.cur.get(b).tot[0]-result.cur.get(a).tot[0]);CUSTOM_AGG_CACHE.set(group,result);}
 }
 
 function customAggregation(group){prepareCustomAggregations();return CUSTOM_AGG_CACHE.get(group)||{cur:new Map(),prev:new Map(),order:[]};}
@@ -1390,7 +1446,7 @@ window.ReportCloud.apply=async data=>{
   for(let i=0;i<6;i++)D[i]=data.axes[i];
   DATA.length=0;for(const row of data.rows)DATA.push(row);
   for(const k of ['mapping','userLabels','appMeta'])model[k]={...(data.configuration?.[k]||{}),...(model[k]||{})};
-  model.metadata=data.metadata;model.importRows=DATA.length;
+  model.overallRows=data.overallRows||[];model.metadata=data.metadata;model.importRows=DATA.length;
   for(const key of D[1]){if(!model.mapping[key])model.mapping[key]=/finance|budget|money|loan|emi|calculator/i.test(key)?'Finance':/prank|funny|joke|fart|horn/i.test(key)?'Prank':'AI';}
   rebuildDateIndex();WEEKLY_QUERY_CACHE.clear();CHART_CACHE.clear();CHART_CONTEXT.clear();
   if(follow||currentDates.to<data.metadata.dateMin||currentDates.from>data.metadata.dateMax)currentDates=initialDates();
@@ -1435,4 +1491,4 @@ window.reportReady=Promise.resolve(true);
   });
 })();
 </script>
-<script src="./supabase-transport.js?v=d40dc37a8441"></script><script src="./cloud-client.js?v=d40dc37a8441"></script></body></html>
+<script src="./supabase-transport.js?v=ee38ccbaa53b"></script><script src="./cloud-client.js?v=ee38ccbaa53b"></script></body></html>
