@@ -17,7 +17,7 @@
     for(let i=0;i<3;i++){const step=document.getElementById('import-step-'+i),stage=phase==='read'?0:phase==='done'?2:1;step.classList.toggle('active',i===stage);step.classList.toggle('done',i<stage||stage===2);step.querySelector('i').textContent=i<stage||stage===2?'✓':'0'+(i+1);}
   };
   cloud.decode=(bytes,manifest)=>new Promise((resolve,reject)=>{
-    const worker=new Worker(new URL('./cloud-worker.js?v=ee38ccbaa53b',document.baseURI));const deadline=setTimeout(()=>finish(Error('Xử lý dữ liệu quá lâu. Hãy thử lại.')),120000);
+    const worker=new Worker(new URL('./cloud-worker.js?v=1a065e881041',document.baseURI));const deadline=setTimeout(()=>finish(Error('Xử lý dữ liệu quá lâu. Hãy thử lại.')),120000);
     function finish(error,data){clearTimeout(deadline);worker.terminate();if(error)reject(error);else{trusted.add(data);resolve(data);}}
     worker.onmessage=({data:m})=>{if(m.type==='progress')cloud.progress(m.label,m.percent);else if(m.type==='done')finish(null,m.data);else if(m.type==='error')finish(Error(m.message));};worker.onerror=()=>finish(Error('Không khởi chạy được bộ xử lý dữ liệu. Hãy tải lại trang.'));
     worker.postMessage({bytes,manifest,kind},[bytes]);
@@ -51,7 +51,7 @@
     if(digest!==manifest.sha256)throw Error('Kiểm tra toàn vẹn dữ liệu không đạt.');
     return cloud.decode(bytes,manifest);
   }
-  function showFresh(m){const time=new Date(m.generatedAt).toLocaleString('vi-VN');status(`${m.synthetic?'DEMO · ':''}Cập nhật: ${time} · ${m.from} → ${m.to}`);label.title='Hai report cùng sử dụng phiên bản '+m.version;}
+  function showFresh(m){const time=new Date(m.generatedAt).toLocaleString('vi-VN');status(`${m.synthetic?'DEMO · ':''}${cloud.cacheHit?'Cache máy · ':''}Cập nhật: ${time} · ${m.from} → ${m.to}`);label.title='Hai report cùng sử dụng phiên bản '+m.version;}
   function applyWeeklyBootstrap(data){const el=document.getElementById('bootstrap'),config=JSON.parse(el.textContent);config.axes=data.axes;config.rows=data.rows;config.overallRows=data.overallRows||[];for(const k of ['mapping','userLabels','appMeta'])config[k]={...(data.configuration?.[k]||{}),...(config[k]||{})};config.metadata=data.metadata;config.importRows=data.rows.length;cloud.bootstrapModel=config;el.textContent='';}
   async function start(){
     try{
