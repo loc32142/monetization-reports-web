@@ -405,6 +405,11 @@ const daysBetween=(a,b)=>Math.max(0,Math.round((new Date(b+'T12:00:00')-new Date
 const COLORS=['#4d9eff','#40c8a6','#b28cf6','#efa86a','#ef789e','#8bd3e9'];
 const GROUPS=['AdMob Network','AdMob Network Waterfall','Other Sources'];
 const groupColor=['#a78bfa','#7da9e8','#58bfae'];
+/* One color per ad source name, shared by every chart, legend, tooltip and mix. AdMob colors match groupColor. */
+const SOURCE_COLOR_FIXED=[[/^admob network$/i,'#a78bfa'],[/^admob network waterfall$/i,'#7da9e8'],[/applovin/i,'#ef789e'],[/mintegral/i,'#efa86a'],[/meta|facebook/i,'#4fc3e0'],[/pangle/i,'#e3b341'],[/unity/i,'#8cc152'],[/ironsource/i,'#d97fd9'],[/liftoff|vungle/i,'#f08a5d'],[/inmobi/i,'#c4a16b'],[/dt exchange|fyber/i,'#6fcf97'],[/moloco/i,'#d9a05b'],[/bigo/i,'#c27ba0'],[/chartboost/i,'#b0876b']];
+const SOURCE_COLOR_SPARE=['#9aa5b8','#b48ead','#5fb8d9','#d99a5f','#7fbf6a','#d97fa8','#8f9be8','#c9b458'];
+const sourceColorCache=new Map();
+function sourceColor(name){const key=String(name||'');if(sourceColorCache.has(key))return sourceColorCache.get(key);const hit=SOURCE_COLOR_FIXED.find(([re])=>re.test(key));const color=hit?hit[1]:SOURCE_COLOR_SPARE[[...sourceColorCache.keys()].filter(k=>!SOURCE_COLOR_FIXED.some(([re])=>re.test(k))).length%SOURCE_COLOR_SPARE.length];sourceColorCache.set(key,color);return color}
 const sourceGroup=s=>s==='AdMob Network'?'AdMob Network':s==='AdMob Network Waterfall'?'AdMob Network Waterfall':'Other Sources';
 const keyOf=(name,platform)=>name+' ⟦'+platform+'⟧';
 const splitKey=key=>{let i=key.lastIndexOf(' ⟦');return i>=0?{name:key.slice(0,i),platform:key.slice(i+2,-1)}:{name:key,platform:'Unknown'}};
@@ -1130,7 +1135,7 @@ function makeUnitMetric(id,title,metric,dates,unit,sourceRows,removable=false){
  const priority=['AdMob Network','AdMob Network Waterfall'];
  const mains=sourceRows.filter(x=>priority.includes(x.name));
  let selected=[...new Map([...mains,...sourceRows.slice(0,4),...sourceRows.filter(x=>state.extraSourcePins.includes(x.name))].map(x=>[x.name,x])).values()].slice(0,9);
- const entries=choice==='overall'?[{name:'Overall · '+unit.name,bucket:unit.bucket,color:COLORS[0]}]:selected.map((z,i)=>({name:z.name,bucket:z.bucket,color:COLORS[i%COLORS.length]}));
+ const entries=choice==='overall'?[{name:'Overall · '+unit.name,bucket:unit.bucket,color:COLORS[0]}]:selected.map(z=>({name:z.name,bucket:z.bucket,color:sourceColor(z.name)}));
  const chart=makeChart(id,title,metric,dates,entries);
  chart.breakdown=choice;
  chart.removable=removable;
